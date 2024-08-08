@@ -3,8 +3,55 @@
 #include "user/user.h"
 #include "kernel/fs.h"
 
+char *
+fmtname(char *path)
+{
+    static char buf[DIRSIZ + 1];
+    char *p;
+
+    // Find first character after last slash.
+    for (p = path + strlen(path); p >= path && *p != '/'; p--)
+        ;
+    p++;
+
+    // Return blank-padded name.
+    if (strlen(p) >= DIRSIZ)
+        return p;
+    memmove(buf, p, strlen(p));
+    memset(buf + strlen(p), ' ', DIRSIZ - strlen(p));
+    return buf;
+}
+
 void find(char *path, char *file)
 {
+    /*
+    1、stat/fstat
+    使用：
+        fstat(fd, &st)  参数是文件描述符
+        stat(buf, &st)  参数是路径名
+    作用：读取 给的路径名/文件描述符 是什么类型（文件/文件夹）：
+        如：给定./a/b，b可能是文件，也可能是文件夹
+        保存的信息存储在st中（struct stat st;）
+
+        struct stat {
+            int dev;     // File system's disk device
+            uint ino;    // Inode number
+            short type;  // Type of file 【文件类型】
+            short nlink; // Number of links to file
+            uint64 size; // Size of file in bytes
+        };
+         
+    2、struct dirent de;
+    对应：read(fd, &de, sizeof(de)) == sizeof(de)
+    作用：读取一个目录下的目录项，
+        如：./a/b，b是目录，那么就读取b目录下的所有目录项（每个目录项对应一个文件/文件夹）
+
+        struct dirent {
+            ushort inum;
+            char name[DIRSIZ]; 【文件名】
+        };
+    */
+
     char buf[512], *p;
     int fd;
     struct dirent de;
@@ -26,8 +73,7 @@ void find(char *path, char *file)
     switch (st.type)
     {
     case T_FILE:
-        fprintf(2, "find: %s is not a directory\n", path);
-        close(fd);
+        fprintf(2, "find: %s is not a directory", path);
         break;
 
     case T_DIR:
@@ -39,46 +85,30 @@ void find(char *path, char *file)
         strcpy(buf, path);
         p = buf + strlen(buf);
         *p++ = '/';
-
-        /*
-        de的结构：
-        struct dirent {
-        ushort inum;
-        char name[DIRSIZ]; 【文件名】
-        };
-        */
         while (read(fd, &de, sizeof(de)) == sizeof(de))
         {
             if (de.inum == 0)
                 continue;
-            if (strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0)
+            if(!strcmp(de.name, ".") || !strcmp(de.name, ".."))
                 continue;
-            // 这行代码执行后，buf就是目前处理的文件/文件夹的完整路径（含名称），而p就是文件的名称
             memmove(p, de.name, DIRSIZ);
             p[DIRSIZ] = 0;
-            // 把文件的状态信息保存到st中，如果获取stat状态失败，则报错并continue
-            /*
-            st的结构：
-            struct stat {
-            int dev;     // File system's disk device
-            uint ino;    // Inode number
-            short type;  // Type of file 【文件类型】
-            short nlink; // Number of links to file
-            uint64 size; // Size of file in bytes
-            };
-            */
             if (stat(buf, &st) < 0)
             {
                 printf("find: cannot stat %s\n", buf);
                 continue;
             }
-            if (st.type == T_DIR)
+
+            switch(st.type)
             {
-                find(buf, file);
-                continue;
+                case T_FILE:
+                    if(!strcmp(de.name, file))
+                        printf("%s\n", buf);
+                    break;
+                case T_DIR: // 递归查找下去
+                    find(buf, file);
+                    break;
             }
-            else if(st.type == T_FILE && !strcmp(de.name, file))
-                printf("%s\n", buf);
         }
         break;
     }
@@ -87,11 +117,14 @@ void find(char *path, char *file)
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3)
+    if (argc != 2 && argc != 3)
     {
-        fprintf(2, "Usage: find PathName FileName\n");
+        fprintf(2, "Usage: find [Path] FileName\n");
         exit(1);
     }
-    find(argv[1], argv[2]);
+    if (argc == 2)
+        find(".", argv[1]);
+    else
+        find(argv[1], argv[2]);
     exit(0);
 }
