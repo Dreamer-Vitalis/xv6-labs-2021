@@ -297,6 +297,9 @@ fork(void)
 
   release(&np->lock);
 
+  // for trace : copy the parent's trace_mask to child's trace_mask
+  np->trace_mask = p->trace_mask;
+
   return pid;
 }
 
