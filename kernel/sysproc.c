@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -99,10 +100,32 @@ sys_uptime(void)
 uint64
 sys_trace(void)
 {
-  // printf("Hi : sys_trace()\n");
   int mask;
+  // 注释见下面的sys_sysinfo，一样的意思
   if(argint(0, &mask) < 0)
     return -1;
   myproc()->trace_mask = mask;
+  return 0;
+}
+
+uint64
+sys_sysinfo(void)
+{
+  // 先保存
+  struct sysinfo info;
+  info.freemem = num_free_memory();
+  info.nproc = num_proc();
+
+  // 再把内容返回到用户态
+  struct proc *p = myproc();
+  // argaddr的用法其实和上面的argint类似，都是用来获取系统调用的参数
+  // 例如 我使用了 sleep 10
+  // 那么我可以使用 argint(0, &n) 获取 10 这个参数，即int n = 10;
+  // 这里的addr也是类似的，用来获取指针变量的值
+  uint64 addr;
+  if(argaddr(0, &addr) < 0)
+    return -1;
+  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
   return 0;
 }
