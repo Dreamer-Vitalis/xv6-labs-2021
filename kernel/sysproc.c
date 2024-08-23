@@ -7,6 +7,9 @@
 #include "spinlock.h"
 #include "proc.h"
 
+// 声明引用了vm.c中的walk
+pte_t * walk(pagetable_t pagetable, uint64 va, int alloc);
+
 uint64
 sys_exit(void)
 {
@@ -75,12 +78,67 @@ sys_sleep(void)
   return 0;
 }
 
+/*
+pte_t *
+walk(pagetable_t pagetable, uint64 va, int alloc)
+{
+  if(va >= MAXVA)
+    panic("walk");
+
+  for(int level = 2; level > 0; level--) {
+    pte_t *pte = &pagetable[PX(level, va)];
+    if(*pte & PTE_V) { // 合法的
+      pagetable = (pagetable_t)PTE2PA(*pte);
+    } else { // 非法的
+      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0) // 如果不需要分配物理内存，则报错，返回0； 或者如果需要分配物理内存，但分配空间失败，也报错，返回0
+        return 0;
+      memset(pagetable, 0, PGSIZE);
+      *pte = PA2PTE(pagetable) | PTE_V | PTE_A;
+    }
+  }
+  return &pagetable[PX(0, va)];
+}
+*/
 
 #ifdef LAB_PGTBL
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  struct proc *p = myproc();
+  //vmprint(p->pagetable);
+
+  uint64 base;
+  int len;
+  uint64 mask;
+  if(argaddr(0, &base) < 0 || argint(1, &len) || argaddr(2, &mask) < 0)
+    return -1;
+  
+  if(base >= MAXVA)
+    return -1;
+
+  uint64 ret = 0;
+  
+  for(uint64 i = 0; i < len; i++)
+  {
+    pte_t *pte = walk(p->pagetable, base + i * PGSIZE, 0);
+    if(pte && (*pte & PTE_V) && (*pte & PTE_A)) {
+      ret |= (1 << i);
+      // 清除访问位
+      *pte &= ~PTE_A;
+    }
+  }
+
+  /*
+  for(uint64 i = 0; i < len; i++)
+    if(ret & ((uint64)1 << i))
+      printf("1 ");
+    else
+      printf("0 ");
+  printf("\n");
+  */
+  
+  if(copyout(p->pagetable, mask, (char *)&ret, sizeof(ret)))
+    return -1;
   return 0;
 }
 #endif

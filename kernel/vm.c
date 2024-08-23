@@ -85,13 +85,13 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
-    if(*pte & PTE_V) {
+    if(*pte & PTE_V) { // 合法的
       pagetable = (pagetable_t)PTE2PA(*pte);
-    } else {
-      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
+    } else { // 非法的
+      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0) // 如果不需要分配物理内存，则报错，返回0； 或者如果需要分配物理内存，但分配空间失败，也报错，返回0
         return 0;
       memset(pagetable, 0, PGSIZE);
-      *pte = PA2PTE(pagetable) | PTE_V;
+      *pte = PA2PTE(pagetable) | PTE_V | PTE_A;
     }
   }
   return &pagetable[PX(0, va)];
@@ -430,5 +430,42 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+
+
+/*
+pagetable_t   uint64*
+PA            转换后是uint64，需要再强制转换为 uint64* (pagetable_t)
+pte_t         uint64
+*/
+
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", pagetable);
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V) printf(" ..%d: pte %p pa %p\n", i, pte, PTE2PA(pte));
+    else continue;
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      pagetable_t child = (pagetable_t)(PTE2PA(pte));
+
+      for(int j = 0; j < 512; j++){
+        pte_t child_pte = child[j];
+        if(child_pte & PTE_V) printf(" .. ..%d: pte %p pa %p\n", j, child_pte, PTE2PA(child_pte));
+        else continue;
+        if((child_pte & PTE_V) && (child_pte & (PTE_R|PTE_W|PTE_X)) == 0){
+          pagetable_t son = (pagetable_t)(PTE2PA(child_pte));
+
+
+          for(int k = 0; k < 512; k++){
+            pte_t son_pte = son[k];
+            if(son_pte & PTE_V) printf(" .. .. ..%d: pte %p pa %p\n", k, son_pte, PTE2PA(son_pte));
+          }
+        }
+      }
+    }
   }
 }

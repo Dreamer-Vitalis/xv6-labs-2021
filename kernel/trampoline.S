@@ -24,9 +24,12 @@ uservec:
         # mapped into user space, at TRAPFRAME.
         #
         
+        # sscratch原本指向的是struct trapframe的地址，现在就需要把来自用户态a0寄存器的值暂存到sscratch（进行交换）
+        # 二者进行交换，从而使得执行下面的sd ra, 40(a0)等等时， instruction src dst，可以使得寄存器ra的值，保存在40(a0)，即struct trapframe中 ra 字段的值（定义在proc.h）中
 	# swap a0 and sscratch
         # so that a0 is TRAPFRAME
         csrrw a0, sscratch, a0
+
 
         # save the user registers in TRAPFRAME
         sd ra, 40(a0)
@@ -77,7 +80,7 @@ uservec:
         ld t1, 0(a0)
         csrw satp, t1
         sfence.vma zero, zero
-
+ 
         # a0 is no longer valid, since the kernel page
         # table does not specially map p->tf.
 
