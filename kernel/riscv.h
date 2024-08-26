@@ -1,3 +1,4 @@
+// Add for lab
 static inline uint64
 r_fp()
 {
