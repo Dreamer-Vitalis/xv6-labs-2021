@@ -181,9 +181,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      // panic("uvmunmap: walk");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      // panic("uvmunmap: not mapped");
+      continue;
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -315,9 +317,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      // panic("uvmcopy: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      // panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -438,5 +442,41 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+
+/*
+pagetable_t   uint64*
+PA            转换后是uint64，需要再强制转换为 uint64* (pagetable_t)
+pte_t         uint64
+*/
+
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", pagetable);
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V) printf(" ..%d: pte %p pa %p\n", i, pte, PTE2PA(pte));
+    else continue;
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      pagetable_t child = (pagetable_t)(PTE2PA(pte));
+
+      for(int j = 0; j < 512; j++){
+        pte_t child_pte = child[j];
+        if(child_pte & PTE_V) printf(" .. ..%d: pte %p pa %p\n", j, child_pte, PTE2PA(child_pte));
+        else continue;
+        if((child_pte & PTE_V) && (child_pte & (PTE_R|PTE_W|PTE_X)) == 0){
+          pagetable_t son = (pagetable_t)(PTE2PA(child_pte));
+
+
+          for(int k = 0; k < 512; k++){
+            pte_t son_pte = son[k];
+            if(son_pte & PTE_V) printf(" .. .. ..%d: pte %p pa %p\n", k, son_pte, PTE2PA(son_pte));
+          }
+        }
+      }
+    }
   }
 }
