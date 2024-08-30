@@ -85,7 +85,7 @@ usertrap(void)
         kfree((void *)ka);
         p->killed = 1;
       }
-      //vmprint(p->pagetable);
+
     }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
