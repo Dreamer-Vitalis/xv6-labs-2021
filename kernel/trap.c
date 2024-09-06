@@ -127,32 +127,6 @@ usertrap(void)
   
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else if(r_scause() == 12 || r_scause() == 13){
-    pte_t *pte;
-    
-    uint64 va = r_stval();
-
-    if((pte = walk(p->pagetable, va, 0)) == 0)
-      panic("usertrap: pte should exist");
-    if((*pte) & PTE_COW == 0 || va > p->sz || va < p->trapframe->sp)
-    {
-      // to do -- > 应该不能只是简单的kill
-      p->killed = 1;
-      exit(-1);
-    }
-    uint64 ka = (uint64)kalloc();
-    if(ka == 0)
-      p->killed = 1;
-    else{
-      memset((void *) ka, 0, PGSIZE);
-      uint64 pa = PTE2PA(*pte);
-      memmove(ka, pa, PGSIZE);
-      if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, ka, PTE_W|PTE_U|PTE_R) != 0){
-        kfree((void *)ka);
-        p->killed = 1;
-      }
-      *pte = (*pte) | (PTE_W) & (~PTE_COW);
-    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
