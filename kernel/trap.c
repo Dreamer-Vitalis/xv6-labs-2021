@@ -29,6 +29,58 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+// Return  0 means Successful.
+// Return -1 means PTE is invalid
+// Return -2 means this page is not a Copy_on_Write Page
+// Return -3 means no Memory for kalloc or mappages failed.
+int
+solve_cow_page(pagetable_t pagetable, uint64 va)
+{
+  // Check the validity of the page
+  if(va >= MAXVA)
+    return -1;
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+    return -1;
+  
+  // Check if the page is a Cow page
+  if((*pte & PTE_W) != 0)
+    return -2;
+  
+  uint64 old_pa = PTE2PA(*pte);
+
+  // When a page-fault occurs on a COW page, allocate a new page with kalloc().
+  uint64 new_pa = (uint64)kalloc();
+  if(new_pa == 0){
+    printf("solve_cow_page() : kalloc failed!\n");
+    return -3;
+  }
+
+  // Copy the old page to the new page
+  memmove((void *)new_pa, (void *)old_pa, PGSIZE);
+
+  // Clear PTE for old page on pagetable
+  uvmunmap(pagetable, PGROUNDDOWN(va), 1, 0);
+
+  // Install the new page in the PTE with PTE_W set.
+
+  // Wrong : if(mappages(pagetable, PGROUNDDOWN(va), PGSIZE, new_pa, PTE_FLAGS(*pte) | PTE_W) != 0)
+  // I'm guessing it's because the [shell] or [init] processes don't have enough permissions
+  // (PTE_U PTE_V PTE_R PTE_X etc. may be missing)
+  if(mappages(pagetable, PGROUNDDOWN(va), PGSIZE, new_pa, PTE_V | PTE_U | PTE_R | PTE_X | PTE_W) != 0){
+    kfree((void *)new_pa);
+    printf("solve_cow_page() : mappages failed\n");
+    return -3;
+  }
+
+  // Remember to kfree old_pa (Only delete old_pa if the reference count of old_pa is 1)
+  kfree((void *)old_pa);
+
+  //printf("solve_cow_page() : ok!\n");
+
+  return 0;
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -65,6 +117,14 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause() == 15){
+
+    uint64 va = r_stval();
+    // printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    // printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    if(solve_cow_page(p->pagetable, va))
+      p->killed = 1;
+  
   } else if((which_dev = devintr()) != 0){
     // ok
   } else if(r_scause() == 12 || r_scause() == 13){
