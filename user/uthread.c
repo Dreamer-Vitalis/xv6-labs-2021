@@ -62,6 +62,7 @@ thread_schedule(void)
      * Invoke thread_switch to switch from t to next_thread:
      * thread_switch(??, ??);
      */
+    t->state = RUNNABLE; // ???
   } else
     next_thread = 0;
 }
@@ -75,6 +76,7 @@ thread_create(void (*func)())
     if (t->state == FREE) break;
   }
   t->state = RUNNABLE;
+  memset(t->stack, 0, sizeof(t->stack)); // ?
   // YOUR CODE HERE
 }
 
