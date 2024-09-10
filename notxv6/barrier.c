@@ -20,6 +20,7 @@ barrier_init(void)
   assert(pthread_mutex_init(&bstate.barrier_mutex, NULL) == 0);
   assert(pthread_cond_init(&bstate.barrier_cond, NULL) == 0);
   bstate.nthread = 0;
+  bstate.round = 0; // Add
 }
 
 static void 
@@ -30,7 +31,25 @@ barrier()
   // Block until all threads have called barrier() and
   // then increment bstate.round.
   //
+
+  pthread_mutex_lock(&bstate.barrier_mutex);
   
+  bstate.nthread = (bstate.nthread + 1) % nthread;
+  
+  if(bstate.nthread == 0) // 说明该线程是最后一个到达的线程了
+  {
+    bstate.round++;
+    pthread_cond_broadcast(&bstate.barrier_cond); // 尝试唤醒其他所有线程
+  }
+  else // 说明该线程还不是最后一个到达的线程
+  {
+    int current_round = bstate.round;
+    while(bstate.round == current_round)
+      pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
+  }
+
+  pthread_mutex_unlock(&bstate.barrier_mutex);
+
 }
 
 static void *
