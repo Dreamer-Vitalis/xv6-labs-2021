@@ -24,14 +24,15 @@
 
 struct
 {
-  struct spinlock global_lock; // Just for bget() when Not cached and can't find a LRU buffer.
-  struct spinlock lock[13]; // Modify
-  struct buf buf[NBUF];
-
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
   // head.next is most recent, head.prev is least.
   struct buf head[13]; // Modify
+
+  struct spinlock global_lock; // Just for bget() when Not cached and can't find a LRU buffer.
+  struct spinlock lock[13]; // Modify
+  
+  struct buf buf[NBUF];
 } bcache;
 
 void binit(void)
@@ -107,8 +108,7 @@ bget(uint dev, uint blockno)
   // if(holding(&bcache.lock[i])) continue;
   // else acquire(&bcache.lock[i]);
   // if和else 中间 有另外一个进程P2 进入了bget()而获取到对应的bcache.lock[i]，他也在上面没有找到可用的buffer cache，也进入到下面，就会造成死锁
-  // 所以就需要先释放掉它，让原本的进程先处理
-  
+  // 所以就需要先释放掉它，让原本的进程P1先处理
   if(holding(&bcache.global_lock))
     release(&bcache.lock[bno]);
   
