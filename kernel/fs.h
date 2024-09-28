@@ -36,6 +36,9 @@ struct dinode {
   short nlink;          // Number of links to inode in file system
   uint size;            // Size of file (bytes)
   uint addrs[NDIRECT+1];   // Data block addresses
+  // addr [0~11] direct   block -- directly store file datas
+  // addr [12]   indirect block -- pointer to another block, and this block contains [1024/4 = 256] blocks
+  // so in xv6, the max file size is (12 + 256) * 1024 KB
 };
 
 // Inodes per block.
