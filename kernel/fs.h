@@ -24,18 +24,19 @@ struct superblock {
 
 #define FSMAGIC 0x10203040
 
-#define NDIRECT 12
+#define NDIRECT 11
 #define NINDIRECT (BSIZE / sizeof(uint))
-#define MAXFILE (NDIRECT + NINDIRECT)
+#define NININDIRECT (BSIZE / sizeof(uint) * BSIZE / sizeof(uint))
+#define MAXFILE (NDIRECT + NINDIRECT + NININDIRECT)
 
 // On-disk inode structure
 struct dinode {
-  short type;           // File type
-  short major;          // Major device number (T_DEVICE only)
-  short minor;          // Minor device number (T_DEVICE only)
-  short nlink;          // Number of links to inode in file system
-  uint size;            // Size of file (bytes)
-  uint addrs[NDIRECT+1];   // Data block addresses
+  short type;                  // File type
+  short major;                 // Major device number (T_DEVICE only)
+  short minor;                 // Minor device number (T_DEVICE only)
+  short nlink;                 // Number of links to inode in file system
+  uint size;                   // Size of file (bytes)
+  uint addrs[NDIRECT + 1 + 1]; // Data block addresses
   // addr [0~11] direct   block -- directly store file datas
   // addr [12]   indirect block -- pointer to another block, and this block contains [1024/4 = 256] blocks
   // so in xv6, the max file size is (12 + 256) * 1024 KB
