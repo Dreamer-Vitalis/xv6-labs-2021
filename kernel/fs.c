@@ -380,7 +380,7 @@ bmap(struct inode *ip, uint bn)
   uint addr, *a;
   struct buf *bp;
 
-  uint *b; // Add for doubly-indirect block
+  uint *b;         // Add for doubly-indirect block
   struct buf *bp2; // Add for doubly-indirect block
 
   if(bn < NDIRECT){
