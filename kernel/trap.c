@@ -3,9 +3,12 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "defs.h"
 #include "fcntl.h"
+#include "fs.h"
+#include "file.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -16,17 +19,6 @@ extern char trampoline[], uservec[], userret[];
 void kernelvec();
 
 extern int devintr();
-
-struct file {
-  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
-  int ref; // reference count
-  char readable;
-  char writable;
-  struct pipe *pipe; // FD_PIPE
-  struct inode *ip;  // FD_INODE and FD_DEVICE
-  uint off;          // FD_INODE
-  short major;       // FD_DEVICE
-};
 
 void
 trapinit(void)
@@ -39,6 +31,51 @@ void
 trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
+}
+
+uint64
+solve_mmap(uint64 va)
+{
+  struct proc *p = myproc();
+  for (int i = 0; i < 16; i++)
+  {
+    if (p->vma[i].addr && (uint64)p->vma[i].addr <= va && va < (uint64)p->vma[i].addr + (uint64)p->vma[i].length)
+    {
+      // 尝试为文件对象的 vm 分配内存，用来容纳新的内容
+      void *ka = kalloc();
+      if (ka == 0)
+        return -1;
+      else
+      {
+        memset(ka, 0, PGSIZE);
+        struct VMA *v = &p->vma[i];
+
+        // 将存储在 disk 中的文件对象的新内容拷贝到 vm
+        ilock(v->file->ip);
+        uint64 offset = p->vma[i].offset + PGROUNDDOWN(va - (uint64)p->vma[i].addr);
+        readi(v->file->ip, 0, (uint64)ka, offset, PGSIZE);
+        iunlock(v->file->ip);
+
+        // 根据 prot 来设置 PTE 权限
+        int flags = PTE_U;
+        if (v->prot & PROT_READ)
+          flags |= PTE_R;
+        if (v->prot & PROT_WRITE)
+          flags |= PTE_W;
+        if (v->prot & PROT_EXEC)
+          flags |= PTE_X;
+
+        // 添加映射
+        if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)ka, flags) != 0)
+        {
+          kfree(ka);
+          return -1;
+        }
+        return 0;
+      }
+    }
+  }
+  return -1;
 }
 
 //
@@ -83,50 +120,8 @@ usertrap(void)
     uint64 va = r_stval();
     if(va >= p->sz || va <= p->trapframe->sp)
       p->killed = 1;
-    else
-    {
-      char flag = 0;
-      for (int i = 0; i < 16; i++)
-      {
-        if (p->vma[i].addr && (uint64)p->vma[i].addr <= va && va < (uint64)p->vma[i].addr + (uint64)p->vma[i].length)
-        {
-          flag = 1;
-
-          // 尝试为文件对象的 vm 分配内存，用来容纳新的内容
-          void *ka = kalloc();
-          if (ka == 0)
-            p->killed = 1;
-          else
-          {
-            memset(ka, 0, PGSIZE);
-            struct VMA *v = &p->vma[i];
-
-            // 将存储在 disk 中的文件对象的新内容拷贝到 vm
-            ilock(v->file->ip);
-            uint64 offset = p->vma[i].offset + PGROUNDDOWN(va - (uint64)p->vma[i].addr);
-            readi(v->file->ip, 0, (uint64)ka, offset, PGSIZE);
-            iunlock(v->file->ip);
-
-            // 根据 prot 来设置 PTE 权限
-            int flags = PTE_U;
-            if (v->prot & PROT_READ)
-              flags |= PTE_R;
-            if (v->prot & PROT_WRITE)
-              flags |= PTE_W;
-            if (v->prot & PROT_EXEC)
-              flags |= PTE_X;
-            
-            // 添加映射
-            if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)ka, flags) != 0)
-            {
-              kfree(ka);
-              p->killed = 1;
-            }
-          }
-          break;
-        }
-      }
-      if(!flag)
+    else{
+      if(solve_mmap(va) != 0)
         p->killed = 1;
     }
   } else {
